@@ -14,19 +14,42 @@ gi.require_version('GLib', '2.0')
 gi.require_version('GObject', '2.0')
 from gi.repository import GLib, GObject, Gst
 from optparse import OptionParser
+from off import CheckOFF
 
 class GstPlayer:
-    def __init__(self, pipe, loop):
+    def __init__(self, pipe, loop, check_off):
         self.pipe = pipe
         self.loop = loop
+        self.check_off = check_off
 
-def check_off (symbol):
-    product = openfoodfacts.products.get_product(symbol)
-    print(product['status'])
-    return product
+def display_ok (status):
+  filename = "res/no.txt"
+  if status:
+    filename = "res/yes.txt"
+  file_status = open (filename, "r")
+  print (" %s" % file_status.read(), end="")
+
+def check_off_can (product):
+  a = set(['can','metal'])
+  b = set(product['packaging_tags'])
+  result =  any(elem in b  for elem in a)
+  if result:
+      display_ok(True)
+  else:
+      display_ok(False)
+
+def off_finish_cb (result):
+    #print("dans le player %s" % result)
+    if result['status'] == 1:
+      product = result['product']
+      check_off_can(product)
+
+def check_off (player, symbol):
+    player.check_off.check_open_food_facts_with_cb(symbol, off_finish_cb)
 
 def bus_call(bus, message, player):
     t = message.type
+    #print (message.get_structure())
     if t == Gst.MessageType.EOS:
         sys.stdout.write("End-of-stream\n")
         player.loop.quit()
@@ -36,12 +59,11 @@ def bus_call(bus, message, player):
         player.loop.quit()
     elif t == Gst.MessageType.ELEMENT:
         if message.get_structure().get_name() == "barcode":
-          print (message.get_structure())
-          print (message.get_structure().get_string("type"))
-          print (message.get_structure().get_string("symbol"))
+          #print (message.get_structure())
+          #print (message.get_structure().get_string("type"))
+          #print (message.get_structure().get_string("symbol"))
           #check_off("michelpatrick")
-          check_off(message.get_structure().get_string("symbol"))
-
+          check_off (player, message.get_structure().get_string("symbol"))
     return True
 
 def main(args):
@@ -81,8 +103,8 @@ def main(args):
     pipe =  bin = Gst.parse_launch(pipeline_str)
 
     loop = GObject.MainLoop()
-
-    player = GstPlayer(pipe, loop)
+    check_off = CheckOFF()
+    player = GstPlayer(pipe, loop, check_off)
 
     bus = pipe.get_bus()
     bus.add_signal_watch()
